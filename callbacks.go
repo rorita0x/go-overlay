@@ -33,6 +33,11 @@ func ovOutputName(h C.uintptr_t, name *C.char) {
 	cgo.Handle(h).Value().(*output).name = C.GoString(name)
 }
 
+//export ovOutputDescription
+func ovOutputDescription(h C.uintptr_t, desc *C.char) {
+	cgo.Handle(h).Value().(*output).description = C.GoString(desc)
+}
+
 //export ovSurfacePreferredScale
 func ovSurfacePreferredScale(h C.uintptr_t, factor C.int32_t) {
 	cgo.Handle(h).Value().(*surface).setPreferredScale(int(factor))

@@ -26,7 +26,8 @@ err = ov.Run(ctx) // blocks; Set/Clear may be called from any goroutine
 ```
 
 Colors are `color.NRGBA` (straight alpha). `Options.Outputs` limits the overlay to
-named outputs (`DP-1`, …), and `Options.ExclusiveZone = -1` places labels on top of panels.
+named outputs (`DP-1`, …); `overlay.ListOutputs()` returns the names of the
+connected monitors. `Options.ExclusiveZone = -1` places labels on top of panels.
 
 ## Plain text with terminal colors
 
@@ -53,6 +54,7 @@ regenerates it from `protocols/` (needs `wayland-scanner`).
 
 ```sh
 go run ./cmd/overlay-demo                 # all outputs
+go run ./cmd/overlay-demo -list-outputs   # print monitor names
 go run ./cmd/overlay-demo -outputs DP-1   # one output
 go run ./cmd/overlay-demo -over-panels
 ls --color=always | go run ./cmd/overlay-demo -stdin   # last 10 lines, bottom left

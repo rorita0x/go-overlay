@@ -37,7 +37,9 @@ static void output_scale(void *data, struct wl_output *o, int32_t factor) {
 static void output_name(void *data, struct wl_output *o, const char *name) {
 	ovOutputName((uintptr_t)data, (char *)name);
 }
-static void output_description(void *data, struct wl_output *o, const char *desc) {}
+static void output_description(void *data, struct wl_output *o, const char *desc) {
+	ovOutputDescription((uintptr_t)data, (char *)desc);
+}
 
 static const struct wl_output_listener output_listener = {
 	.geometry = output_geometry,

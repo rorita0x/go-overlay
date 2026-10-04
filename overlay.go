@@ -23,6 +23,7 @@ import (
 	"runtime"
 	"runtime/cgo"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -74,6 +75,29 @@ func New(opts Options) (*Overlay, error) {
 	if opts.TextStyle == (Style{}) {
 		opts.TextStyle = DefaultTextStyle
 	}
+	o, err := connect(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	switch {
+	case o.compositor == nil:
+		err = errors.New("overlay: compositor lacks wl_compositor v4")
+	case o.shm == nil:
+		err = errors.New("overlay: compositor lacks wl_shm")
+	case o.layerShell == nil:
+		err = errors.New("overlay: compositor does not support zwlr_layer_shell_v1")
+	}
+	if err != nil {
+		o.Close()
+		return nil, err
+	}
+	return o, nil
+}
+
+// connect opens the display and binds the globals, without checking that the
+// ones needed for drawing are present.
+func connect(opts Options) (*Overlay, error) {
 	o := &Overlay{opts: opts, outputs: map[uint32]*output{}, wakeR: -1, wakeW: -1}
 
 	o.display = C.wl_display_connect(nil)
@@ -100,21 +124,34 @@ func New(opts Options) (*Overlay, error) {
 			return nil, err
 		}
 	}
+	return o, nil
+}
 
-	var err error
-	switch {
-	case o.compositor == nil:
-		err = errors.New("overlay: compositor lacks wl_compositor v4")
-	case o.shm == nil:
-		err = errors.New("overlay: compositor lacks wl_shm")
-	case o.layerShell == nil:
-		err = errors.New("overlay: compositor does not support zwlr_layer_shell_v1")
-	}
+// OutputInfo describes a monitor as reported by the compositor.
+type OutputInfo struct {
+	Name        string // e.g. "DP-3"; the value to use in Options.Outputs
+	Description string // human-readable, e.g. make and model
+	Scale       int    // integer scale factor
+}
+
+// ListOutputs returns the monitors currently connected, sorted by name. It
+// opens its own short-lived connection, so it can be called before New.
+// Names require a compositor with wl_output version 4.
+func ListOutputs() ([]OutputInfo, error) {
+	o, err := connect(Options{})
 	if err != nil {
-		o.Close()
 		return nil, err
 	}
-	return o, nil
+	defer o.Close()
+
+	var list []OutputInfo
+	for _, out := range o.outputs {
+		if out.ready {
+			list = append(list, OutputInfo{Name: out.name, Description: out.description, Scale: max(out.scale, 1)})
+		}
+	}
+	slices.SortFunc(list, func(a, b OutputInfo) int { return strings.Compare(a.Name, b.Name) })
+	return list, nil
 }
 
 // Set shows l in corner c, replacing what was there. Safe to call from any
@@ -294,6 +331,7 @@ type output struct {
 	handle  cgo.Handle
 
 	name         string
+	description  string
 	scale        int
 	pendingScale int
 	ready        bool // first done event received

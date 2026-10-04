@@ -21,7 +21,19 @@ func main() {
 	outputs := flag.String("outputs", "", "comma-separated output names (default: all)")
 	onPanels := flag.Bool("over-panels", false, "draw on top of panels instead of next to them")
 	stdin := flag.Bool("stdin", false, "show the last 10 lines of stdin (ANSI colors allowed) bottom left")
+	listOutputs := flag.Bool("list-outputs", false, "print the connected outputs and exit")
 	flag.Parse()
+
+	if *listOutputs {
+		list, err := overlay.ListOutputs()
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, out := range list {
+			fmt.Printf("%-10s scale %d  %s\n", out.Name, out.Scale, out.Description)
+		}
+		return
+	}
 
 	opts := overlay.Options{}
 	if *outputs != "" {
