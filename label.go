@@ -33,10 +33,13 @@ const (
 
 // Span is a run of text sharing one color and font style.
 type Span struct {
-	Text   string // may contain "\n" to start a new line
-	Color  color.NRGBA
-	Bold   bool
-	Italic bool
+	Text          string      // may contain "\n" to start a new line
+	Color         color.NRGBA // zero value: Style.Foreground
+	Background    color.NRGBA // highlight behind this span; A == 0 draws none
+	Bold          bool
+	Italic        bool
+	Underline     bool
+	Strikethrough bool
 }
 
 // Style controls the font and the box drawn behind the text.
@@ -57,6 +60,15 @@ type Label struct {
 }
 
 var white = color.NRGBA{255, 255, 255, 255}
+
+// DefaultTextStyle is used by SetText when Options.TextStyle is not set.
+var DefaultTextStyle = Style{
+	Font:       "Monospace 11",
+	Background: color.NRGBA{0x1e, 0x1e, 0x2e, 0xcc},
+	Padding:    8,
+	Radius:     8,
+	Margin:     12,
+}
 
 // clone returns a deep copy with defaults filled in, so later changes by the
 // caller don't race with the event loop.

@@ -38,6 +38,10 @@ type Options struct {
 	Outputs []string
 	// ExclusiveZone 0 keeps labels clear of panels; -1 draws on top of them.
 	ExclusiveZone int
+	// TextStyle is the style used by SetText. A zero Style means DefaultTextStyle.
+	TextStyle Style
+	// Palette maps the 16 ANSI colors for SetText. Nil means DefaultPalette.
+	Palette *Palette
 }
 
 // Overlay is a connection to the Wayland compositor that owns the corner labels.
@@ -66,6 +70,9 @@ type Overlay struct {
 func New(opts Options) (*Overlay, error) {
 	if opts.Namespace == "" {
 		opts.Namespace = "go-overlay"
+	}
+	if opts.TextStyle == (Style{}) {
+		opts.TextStyle = DefaultTextStyle
 	}
 	o := &Overlay{opts: opts, outputs: map[uint32]*output{}, wakeR: -1, wakeW: -1}
 
@@ -119,6 +126,13 @@ func (o *Overlay) Set(c Corner, l Label) {
 	o.gens[c]++
 	o.mu.Unlock()
 	o.wake()
+}
+
+// SetText shows text in corner c using Options.TextStyle. ANSI escape
+// sequences in text set colors and attributes as in a terminal; see ParseANSI.
+// Safe to call from any goroutine.
+func (o *Overlay) SetText(c Corner, text string) {
+	o.Set(c, Label{Spans: ParseANSI(text, o.opts.Palette), Style: o.opts.TextStyle})
 }
 
 // Clear hides corner c. Safe to call from any goroutine.

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 func main() {
 	outputs := flag.String("outputs", "", "comma-separated output names (default: all)")
 	onPanels := flag.Bool("over-panels", false, "draw on top of panels instead of next to them")
+	stdin := flag.Bool("stdin", false, "show the last 10 lines of stdin (ANSI colors allowed) bottom left")
 	flag.Parse()
 
 	opts := overlay.Options{}
@@ -46,11 +48,10 @@ func main() {
 			Radius:     8,
 			Margin:     12,
 		}
-		grey   = overlay.MustHex("#9399b2")
-		green  = overlay.MustHex("#a6e3a1")
-		yellow = overlay.MustHex("#f9e2af")
-		red    = overlay.MustHex("#f38ba8")
-		blue   = overlay.MustHex("#89b4fa")
+		grey  = overlay.MustHex("#9399b2")
+		green = overlay.MustHex("#a6e3a1")
+		red   = overlay.MustHex("#f38ba8")
+		blue  = overlay.MustHex("#89b4fa")
 	)
 
 	ov.Set(overlay.TopLeft, overlay.Label{Style: box, Spans: []overlay.Span{
@@ -67,11 +68,15 @@ func main() {
 		{Text: "REC", Color: red},
 	}})
 
-	ov.Set(overlay.BottomRight, overlay.Label{Style: box, Spans: []overlay.Span{
-		{Text: "cpu ", Color: grey}, {Text: "12%\n", Color: green},
-		{Text: "mem ", Color: grey}, {Text: "61%\n", Color: yellow},
-		{Text: "disk ", Color: grey}, {Text: "93%", Color: red, Bold: true},
-	}})
+	// Plain text with terminal escape codes, styled by Options.TextStyle.
+	ov.SetText(overlay.BottomRight, "\x1b[90mcpu \x1b[32m12%\n"+
+		"\x1b[90mmem \x1b[33m61%\n"+
+		"\x1b[90mdisk \x1b[1;31m93%\x1b[0m\n"+
+		"\x1b[38;5;213m256\x1b[0m \x1b[38;2;137;180;250mtrue\x1b[0m \x1b[4munder\x1b[0m \x1b[7mrev\x1b[0m")
+
+	if *stdin {
+		go showStdin(ov)
+	}
 
 	clock := func(t time.Time) overlay.Label {
 		return overlay.Label{Style: box, Spans: []overlay.Span{
@@ -96,5 +101,18 @@ func main() {
 	if err := ov.Run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+// showStdin displays the last lines read from stdin, updating on every line.
+func showStdin(ov *overlay.Overlay) {
+	var lines []string
+	sc := bufio.NewScanner(os.Stdin)
+	for sc.Scan() {
+		lines = append(lines, sc.Text())
+		if len(lines) > 10 {
+			lines = lines[1:]
+		}
+		ov.SetText(overlay.BottomLeft, strings.Join(lines, "\n"))
 	}
 }

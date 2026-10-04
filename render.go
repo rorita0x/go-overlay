@@ -63,6 +63,16 @@ func newLayout(cr *C.cairo_t, l *Label, c Corner) *C.PangoLayout {
 		if sp.Italic {
 			insert(C.pango_attr_style_new(C.PANGO_STYLE_ITALIC))
 		}
+		if bg := sp.Background; bg.A > 0 {
+			insert(C.pango_attr_background_new(C.guint16(bg.R)*257, C.guint16(bg.G)*257, C.guint16(bg.B)*257))
+			insert(C.pango_attr_background_alpha_new(C.guint16(bg.A) * 257))
+		}
+		if sp.Underline {
+			insert(C.pango_attr_underline_new(C.PANGO_UNDERLINE_SINGLE))
+		}
+		if sp.Strikethrough {
+			insert(C.pango_attr_strikethrough_new(C.TRUE))
+		}
 	}
 	ctext := C.CString(text.String())
 	C.pango_layout_set_text(layout, ctext, -1)

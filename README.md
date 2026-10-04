@@ -28,6 +28,21 @@ err = ov.Run(ctx) // blocks; Set/Clear may be called from any goroutine
 Colors are `color.NRGBA` (straight alpha). `Options.Outputs` limits the overlay to
 named outputs (`DP-1`, …), and `Options.ExclusiveZone = -1` places labels on top of panels.
 
+## Plain text with terminal colors
+
+`SetText` takes a string and colors it the way a terminal would, from ANSI SGR
+escape codes (16/256/truecolor, bold, italic, underline, reverse, …). All other
+escape sequences are stripped. It uses `Options.TextStyle` (default
+`DefaultTextStyle`) and `Options.Palette` (default xterm colors).
+
+```go
+out, _ := exec.Command("git", "-c", "color.status=always", "status", "-s").Output()
+ov.SetText(overlay.BottomLeft, string(out))
+```
+
+`ParseANSI(text, palette)` returns the spans, so you can combine them with
+your own `Style` via `Set`.
+
 ## Build requirements
 
 cgo, plus development files for `wayland-client` and `pangocairo`.
@@ -40,6 +55,7 @@ regenerates it from `protocols/` (needs `wayland-scanner`).
 go run ./cmd/overlay-demo                 # all outputs
 go run ./cmd/overlay-demo -outputs DP-1   # one output
 go run ./cmd/overlay-demo -over-panels
+ls --color=always | go run ./cmd/overlay-demo -stdin   # last 10 lines, bottom left
 ```
 
 ## Limitations

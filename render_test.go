@@ -86,6 +86,19 @@ func TestRenderColors(t *testing.T) {
 			},
 		},
 		{
+			name:  "span background",
+			l:     label(Style{}, Span{Text: "  ", Background: red}, Span{Text: "  "}),
+			scale: 1,
+			check: func(t *testing.T, buf []byte, w, h, stride int) {
+				if a, r, g, b := pixel(buf, stride, 1, h/2); a != 255 || r != 255 || g != 0 || b != 0 {
+					t.Errorf("highlighted pixel = %d,%d,%d,%d, want opaque red", a, r, g, b)
+				}
+				if a, _, _, _ := pixel(buf, stride, w-2, h/2); a != 0 {
+					t.Errorf("unhighlighted alpha = %d, want 0", a)
+				}
+			},
+		},
+		{
 			name:  "span colors",
 			l:     label(Style{}, Span{Text: "████", Color: red}, Span{Text: "████", Color: blue}),
 			scale: 1,
