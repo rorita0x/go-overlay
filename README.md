@@ -62,3 +62,8 @@ ls --color=always | go run ./cmd/overlay-demo -stdin   # last 10 lines, bottom l
 
 Integer buffer scale only (`preferred_buffer_scale` / `wl_output.scale`); with
 fractional scaling the compositor scales the buffer.
+
+## License
+
+Public domain (Unlicense), see [LICENSE](LICENSE). `protocols/` and the generated `*-protocol.c/h` files keep
+their upstream licenses (stated in each file).
