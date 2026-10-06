@@ -71,6 +71,7 @@ go run ./cmd/overlay-demo                 # all outputs
 go run ./cmd/overlay-demo -list-outputs   # print monitor names
 go run ./cmd/overlay-demo -outputs DP-1   # one output
 go run ./cmd/overlay-demo -over-panels
+go run ./cmd/overlay-demo -image          # animated gradient top left
 ls --color=always | go run ./cmd/overlay-demo -stdin   # last 10 lines, bottom left
 ```
 

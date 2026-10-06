@@ -7,6 +7,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"image"
+	"image/color"
 	"log"
 	"os"
 	"os/signal"
@@ -22,6 +24,7 @@ func main() {
 	onPanels := flag.Bool("over-panels", false, "draw on top of panels instead of next to them")
 	stdin := flag.Bool("stdin", false, "show the last 10 lines of stdin (ANSI colors allowed) bottom left")
 	listOutputs := flag.Bool("list-outputs", false, "print the connected outputs and exit")
+	showImage := flag.Bool("image", false, "show a gradient image top left instead of the text label")
 	flag.Parse()
 
 	if *listOutputs {
@@ -73,6 +76,10 @@ func main() {
 		{Text: os.Getenv("XDG_CURRENT_DESKTOP"), Color: blue, Italic: true},
 	}})
 
+	if *showImage {
+		go showGradient(ctx, ov)
+	}
+
 	alert := box
 	alert.Font = "Sans Bold 14"
 	alert.Background = overlay.MustHex("#00000080")
@@ -114,6 +121,37 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func showGradient(ctx context.Context, ov *overlay.Overlay) {
+	tick := time.NewTicker(time.Second / 30)
+	defer tick.Stop()
+	for frame := 0; ; frame++ {
+		sc := ov.Scale()
+		img := gradient(160*sc, 90*sc, frame)
+		ov.SetImage(overlay.TopLeft, overlay.Image{RGBA: img, Scale: sc, Margin: 12})
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+func gradient(w, h, frame int) *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			a := uint8(255 * y / h)
+			r := uint8((x*255/w + frame*4) % 256)
+			img.SetRGBA(x, y, color.RGBA{
+				R: uint8(uint16(r) * uint16(a) / 255),
+				B: uint8(uint16(255-r) * uint16(a) / 255),
+				A: a,
+			})
+		}
+	}
+	return img
 }
 
 // showStdin displays the last lines read from stdin, updating on every line.
