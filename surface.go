@@ -20,9 +20,9 @@ type surface struct {
 	layer  *C.struct_zwlr_layer_surface_v1
 	handle cgo.Handle
 
-	label *Label
-	gen   uint64
-	w, h  int // logical size passed to set_size
+	content *content
+	gen     uint64
+	w, h    int // logical size passed to set_size
 
 	preferredScale int // from wl_surface.preferred_buffer_scale, 0 = not sent
 	configured     bool
@@ -31,9 +31,9 @@ type surface struct {
 	buffers        []*buffer
 }
 
-func newSurface(out *output, c Corner, l *Label, gen uint64) *surface {
+func newSurface(out *output, c Corner, ct *content, gen uint64) *surface {
 	o := out.o
-	s := &surface{out: out, corner: c, label: l, gen: gen}
+	s := &surface{out: out, corner: c, content: ct, gen: gen}
 	s.handle = cgo.NewHandle(s)
 	s.wl = C.wl_compositor_create_surface(o.compositor)
 	C.ov_surface_add_listener(s.wl, C.uintptr_t(s.handle))
@@ -57,25 +57,25 @@ func newSurface(out *output, c Corner, l *Label, gen uint64) *surface {
 		anchor |= C.ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT
 	}
 	C.zwlr_layer_surface_v1_set_anchor(s.layer, anchor)
-	m := C.int32_t(l.Style.Margin)
+	m := C.int32_t(ct.margin)
 	C.zwlr_layer_surface_v1_set_margin(s.layer, m, m, m, m)
 	C.zwlr_layer_surface_v1_set_exclusive_zone(s.layer, C.int32_t(o.opts.ExclusiveZone))
 	C.zwlr_layer_surface_v1_set_keyboard_interactivity(s.layer, C.ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
-	s.w, s.h = measure(l)
+	s.w, s.h = ct.logicalSize()
 	C.zwlr_layer_surface_v1_set_size(s.layer, C.uint32_t(s.w), C.uint32_t(s.h))
 	// The initial commit without a buffer asks for the first configure.
 	C.wl_surface_commit(s.wl)
 	return s
 }
 
-func (s *surface) setLabel(l *Label, gen uint64) {
-	old := s.label
-	s.label, s.gen = l, gen
-	if l.Style.Margin != old.Style.Margin {
-		m := C.int32_t(l.Style.Margin)
+func (s *surface) setContent(ct *content, gen uint64) {
+	old := s.content
+	s.content, s.gen = ct, gen
+	if ct.margin != old.margin {
+		m := C.int32_t(ct.margin)
 		C.zwlr_layer_surface_v1_set_margin(s.layer, m, m, m, m)
 	}
-	if w, h := measure(l); w != s.w || h != s.h {
+	if w, h := ct.logicalSize(); w != s.w || h != s.h {
 		// Draw after the compositor confirms the new size.
 		s.w, s.h = w, h
 		C.zwlr_layer_surface_v1_set_size(s.layer, C.uint32_t(w), C.uint32_t(h))
@@ -124,12 +124,19 @@ func (s *surface) draw() {
 		return
 	}
 	sc := s.scale()
+	if s.content.label == nil {
+		sc = s.content.scale
+	}
 	w, h := s.w*sc, s.h*sc
 	b := s.freeBuffer(w, h)
 	if b == nil {
 		return // redrawn on the next buffer release
 	}
-	render(s.label, s.corner, b.data, w, h, b.stride, sc)
+	if l := s.content.label; l != nil {
+		render(l, s.corner, b.data, w, h, b.stride, sc)
+	} else {
+		copy(unsafe.Slice((*byte)(b.data), b.size), s.content.pix)
+	}
 	C.wl_surface_set_buffer_scale(s.wl, C.int32_t(sc))
 	C.wl_surface_attach(s.wl, b.wl, 0, 0)
 	C.wl_surface_damage_buffer(s.wl, 0, 0, C.int32_t(w), C.int32_t(h))

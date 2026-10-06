@@ -25,6 +25,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
@@ -61,9 +62,11 @@ type Overlay struct {
 
 	wakeR, wakeW int
 
-	mu     sync.Mutex
-	labels [4]*Label // immutable once stored; nil = corner hidden
-	gens   [4]uint64 // bumped on every Set/Clear
+	mu       sync.Mutex
+	contents [4]*content // immutable once stored; nil = corner hidden
+	gens     [4]uint64   // bumped on every Set/Clear
+
+	maxScale atomic.Int32
 }
 
 // New connects to the compositor named by $WAYLAND_DISPLAY and binds the
@@ -157,9 +160,20 @@ func ListOutputs() ([]OutputInfo, error) {
 // Set shows l in corner c, replacing what was there. Safe to call from any
 // goroutine, before or during Run.
 func (o *Overlay) Set(c Corner, l Label) {
-	cl := l.clone()
+	o.store(c, labelContent(l))
+}
+
+func (o *Overlay) SetImage(c Corner, img Image) {
+	o.store(c, imageContent(img))
+}
+
+func (o *Overlay) Scale() int {
+	return max(int(o.maxScale.Load()), 1)
+}
+
+func (o *Overlay) store(c Corner, ct *content) {
 	o.mu.Lock()
-	o.labels[c] = &cl
+	o.contents[c] = ct
 	o.gens[c]++
 	o.mu.Unlock()
 	o.wake()
@@ -174,11 +188,7 @@ func (o *Overlay) SetText(c Corner, text string) {
 
 // Clear hides corner c. Safe to call from any goroutine.
 func (o *Overlay) Clear(c Corner) {
-	o.mu.Lock()
-	o.labels[c] = nil
-	o.gens[c]++
-	o.mu.Unlock()
-	o.wake()
+	o.store(c, nil)
 }
 
 // Run shows the labels and processes compositor events until ctx is done
@@ -288,30 +298,38 @@ func (o *Overlay) wants(out *output) bool {
 // sync brings the surfaces of every output in line with the requested labels.
 func (o *Overlay) sync() {
 	o.mu.Lock()
-	labels, gens := o.labels, o.gens
+	contents, gens := o.contents, o.gens
 	o.mu.Unlock()
 
+	maxScale := 0
 	for _, out := range o.outputs {
 		if !out.ready || !o.wants(out) {
 			continue
 		}
+		maxScale = max(maxScale, out.scale)
+		for _, s := range out.surfaces {
+			if s != nil {
+				maxScale = max(maxScale, s.preferredScale)
+			}
+		}
 		for c := range out.surfaces {
 			s := out.surfaces[c]
 			switch {
-			case labels[c] == nil:
+			case contents[c] == nil:
 				if s != nil {
 					s.destroy()
 					out.surfaces[c] = nil
 				}
 			case s == nil:
 				if out.closedGen[c] != gens[c] {
-					out.surfaces[c] = newSurface(out, Corner(c), labels[c], gens[c])
+					out.surfaces[c] = newSurface(out, Corner(c), contents[c], gens[c])
 				}
 			case s.gen != gens[c]:
-				s.setLabel(labels[c], gens[c])
+				s.setContent(contents[c], gens[c])
 			}
 		}
 	}
+	o.maxScale.Store(int32(maxScale))
 }
 
 // removeAll destroys every surface and waits until the compositor has seen it.

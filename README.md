@@ -44,6 +44,20 @@ ov.SetText(overlay.BottomLeft, string(out))
 `ParseANSI(text, palette)` returns the spans, so you can combine them with
 your own `Style` via `Set`.
 
+## Images
+
+`SetImage` shows a picture you rendered yourself, e.g. with a software
+renderer. The pixels are copied, so the `*image.RGBA` can be reused for the
+next frame. `Overlay.Scale()` returns the highest buffer scale of the outputs
+in use; render at that many pixels per logical pixel and pass it as `Scale`.
+
+```go
+sc := ov.Scale()
+img := image.NewRGBA(image.Rect(0, 0, 300*sc, 400*sc))
+draw(img) // premultiplied RGBA
+ov.SetImage(overlay.TopRight, overlay.Image{RGBA: img, Scale: sc, Margin: 12})
+```
+
 ## Build requirements
 
 cgo, plus development files for `wayland-client` and `pangocairo`.
