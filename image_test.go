@@ -34,3 +34,24 @@ func TestImageContentTinyImage(t *testing.T) {
 		t.Errorf("logical size %dx%d, want 1x1", w, h)
 	}
 }
+
+func TestImageContentOpacity(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.SetRGBA(0, 0, color.RGBA{R: 0xc8, G: 0x64, B: 0x00, A: 0xc8})
+
+	tests := []struct {
+		opacity float64
+		want    uint32
+	}{
+		{0, 0xc8c86400},
+		{1, 0xc8c86400},
+		{0.5, 0x64643200},
+		{0.25, 0x32321900},
+	}
+	for _, tt := range tests {
+		ct := imageContent(Image{RGBA: img, Opacity: tt.opacity})
+		if got := *(*uint32)(unsafe.Pointer(&ct.pix[0])); got != tt.want {
+			t.Errorf("opacity %v: pixel %#08x, want %#08x", tt.opacity, got, tt.want)
+		}
+	}
+}

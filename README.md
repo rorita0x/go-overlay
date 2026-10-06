@@ -50,6 +50,8 @@ your own `Style` via `Set`.
 renderer. The pixels are copied, so the `*image.RGBA` can be reused for the
 next frame. `Overlay.Scale()` returns the highest buffer scale of the outputs
 in use; render at that many pixels per logical pixel and pass it as `Scale`.
+`Opacity` fades the whole picture, e.g. `0.5` for half transparent. Leaving it
+unset (0) or setting it to 1 shows the picture fully opaque.
 
 ```go
 sc := ov.Scale()

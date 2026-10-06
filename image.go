@@ -6,9 +6,10 @@ import (
 )
 
 type Image struct {
-	RGBA   *image.RGBA
-	Scale  int
-	Margin int
+	RGBA    *image.RGBA
+	Scale   int
+	Margin  int
+	Opacity float64 // 0 = opaque
 }
 
 type content struct {
@@ -32,12 +33,18 @@ func imageContent(img Image) *content {
 	ct := &content{pw: lw * sc, ph: lh * sc, scale: sc, margin: img.Margin}
 	ct.pix = make([]byte, ct.pw*ct.ph*4)
 
+	factor := uint32(256)
+	if img.Opacity > 0 && img.Opacity < 1 {
+		factor = uint32(img.Opacity * 256)
+	}
+	fade := func(v uint8) uint32 { return uint32(v) * factor >> 8 }
+
 	cw, ch := min(ct.pw, b.Dx()), min(ct.ph, b.Dy())
 	for y := range ch {
 		src := img.RGBA.Pix[img.RGBA.PixOffset(b.Min.X, b.Min.Y+y):][:cw*4]
 		dst := ct.pix[y*ct.pw*4:][:cw*4]
 		for i := 0; i < len(src); i += 4 {
-			argb := uint32(src[i+3])<<24 | uint32(src[i])<<16 | uint32(src[i+1])<<8 | uint32(src[i+2])
+			argb := fade(src[i+3])<<24 | fade(src[i])<<16 | fade(src[i+1])<<8 | fade(src[i+2])
 			*(*uint32)(unsafe.Pointer(&dst[i])) = argb
 		}
 	}
