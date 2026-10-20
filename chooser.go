@@ -1,8 +1,10 @@
 package overlay
 
-import "image/color"
+import (
+	"image/color"
+	"strconv"
+)
 
-// DefaultChooserStyle is used by SetChooser when Chooser.Style is a zero Style.
 var DefaultChooserStyle = Style{
 	Font:       "Sans 20",
 	Background: color.NRGBA{0x1e, 0x1e, 0x2e, 0xcc},
@@ -10,32 +12,34 @@ var DefaultChooserStyle = Style{
 	Radius:     12,
 }
 
-// DefaultChooserDigit is used when Chooser.Digit is a zero color.
-var DefaultChooserDigit = MustHex("#9399b2")
+var DefaultChooserKeyColor = MustHex("#9399b2")
 
-// DefaultChooserHighlight is used when Chooser.Highlight is a zero color.
 var DefaultChooserHighlight = MustHex("#89b4fa55")
 
-// Chooser shows a centered Popup offering up to 10 choices, each tagged with
-// a digit (1-9 then 0). Digit keys confirm that choice immediately; Left and
-// Right move a highlighted cursor, clamped at both ends; Enter confirms the
-// cursor; Escape cancels. See SetChooser.
-type Chooser struct {
-	Choices []string
+// Choice is one entry in a Chooser.
+type Choice struct {
+	Text     string
+	Value    string
+	Children []Choice
+}
 
-	Style     Style // Align is forced to AlignCenter; zero Style means DefaultChooserStyle
+// Chooser shows a centered Popup offering choices, laid out as a row or,
+// with Vertical, one per line. See SetChooser.
+type Chooser struct {
+	Choices []Choice
+
+	Style     Style
+	Vertical  bool
 	Gap       string
-	Digit     color.NRGBA
+	Keys      []uint32
+	KeyColor  color.NRGBA
 	Highlight color.NRGBA
 
-	OnChoice func(index int, choice string)
+	OnChoice func(index int, value string)
 	OnCancel func()
 }
 
-// SetChooser shows c with its cursor on the first choice and installs the key
-// handling for it, replacing any handler set via OnKey. OnChoice fires once,
-// for a digit press or Enter; OnCancel fires once, for Escape. Neither fires
-// more than once per SetChooser call. Safe to call from any goroutine.
+// SetChooser shows c and installs its key handling, replacing OnKey.
 func (o *Overlay) SetChooser(c Chooser) {
 	if c.Style == (Style{}) {
 		c.Style = DefaultChooserStyle
@@ -43,13 +47,16 @@ func (o *Overlay) SetChooser(c Chooser) {
 	if c.Gap == "" {
 		c.Gap = "   "
 	}
-	if c.Digit.A == 0 {
-		c.Digit = DefaultChooserDigit
+	if c.KeyColor.A == 0 {
+		c.KeyColor = DefaultChooserKeyColor
 	}
 	if c.Highlight.A == 0 {
 		c.Highlight = DefaultChooserHighlight
 	}
-	cs := &chooserState{o: o, c: c}
+	cs := &chooserState{o: o, c: c, cur: chooserLayer{choices: c.Choices}}
+	if c.Keys != nil {
+		cs.keyIndex = buildKeyIndex(c.Keys)
+	}
 	o.OnKey(cs.onKey)
 	cs.render()
 }
@@ -60,41 +67,64 @@ func (o *Overlay) ClearChooser() {
 	o.ClearPopup()
 }
 
+type chooserLayer struct {
+	choices  []Choice
+	selected int
+	w, h     int
+}
+
 type chooserState struct {
 	o        *Overlay
 	c        Chooser
-	selected int
+	keyIndex map[uint32]int
+	stack    []chooserLayer
+	cur      chooserLayer
 	done     bool
-	w, h     int
 }
 
 func (cs *chooserState) label() Label {
 	style := cs.c.Style
-	style.Align = AlignCenter
+	sep := cs.c.Gap
+	if cs.c.Vertical {
+		style.Align = AlignLeft
+		sep = "\n"
+	} else {
+		style.Align = AlignCenter
+	}
 
 	var spans []Span
-	for i, choice := range cs.c.Choices {
+	for i, choice := range cs.cur.choices {
 		if i > 0 {
-			spans = append(spans, Span{Text: cs.c.Gap})
+			spans = append(spans, Span{Text: sep})
 		}
 		var hl color.NRGBA
-		if i == cs.selected {
+		if i == cs.cur.selected {
 			hl = cs.c.Highlight
 		}
-		spans = append(spans,
-			Span{Text: string(digitFor(i)) + " ", Color: cs.c.Digit, Background: hl},
-			Span{Text: choice, Background: hl},
-		)
+		if tag := keyTag(cs.keyAt(i)); tag != "" {
+			spans = append(spans, Span{Text: tag + " ", Color: cs.c.KeyColor, Background: hl})
+		}
+		spans = append(spans, Span{Text: choice.Text, Background: hl})
 	}
 	return Label{Spans: spans, Style: style}
 }
 
 func (cs *chooserState) render() {
 	l := cs.label()
-	if cs.w == 0 {
-		cs.w, cs.h = MeasureLabel(l)
+	if cs.cur.w == 0 {
+		cs.cur.w, cs.cur.h = MeasureLabel(l)
 	}
-	cs.o.SetPopup(Popup{Width: cs.w, Height: cs.h}, l)
+	cs.o.SetPopup(Popup{Width: cs.cur.w, Height: cs.cur.h}, l)
+}
+
+func (cs *chooserState) keyAt(i int) uint32 {
+	if cs.keyIndex != nil {
+		if i < len(cs.c.Keys) {
+			return cs.c.Keys[i]
+		}
+		return 0
+	}
+	return defaultKeyAt(i)
 }
 
 func (cs *chooserState) onKey(k Key) {
@@ -103,42 +133,84 @@ func (cs *chooserState) onKey(k Key) {
 	}
 	switch k.Sym {
 	case KeyEscape:
-		cs.cancel()
+		cs.back()
 		return
 	case KeyReturn:
-		cs.confirm(cs.selected)
+		cs.confirm(cs.cur.selected)
 		return
-	case KeyLeft:
-		if cs.selected > 0 {
-			cs.selected--
-			cs.render()
+	}
+	if cs.c.Vertical {
+		switch k.Sym {
+		case KeyUp:
+			if cs.cur.selected > 0 {
+				cs.cur.selected--
+				cs.render()
+			}
+			return
+		case KeyDown:
+			if cs.cur.selected < len(cs.cur.choices)-1 {
+				cs.cur.selected++
+				cs.render()
+			}
+			return
 		}
-		return
-	case KeyRight:
-		if cs.selected < len(cs.c.Choices)-1 {
-			cs.selected++
-			cs.render()
+	} else {
+		switch k.Sym {
+		case KeyLeft:
+			if cs.cur.selected > 0 {
+				cs.cur.selected--
+				cs.render()
+			}
+			return
+		case KeyRight:
+			if cs.cur.selected < len(cs.cur.choices)-1 {
+				cs.cur.selected++
+				cs.render()
+			}
+			return
+		}
+	}
+
+	if cs.keyIndex != nil {
+		if i, ok := cs.keyIndex[k.Sym]; ok {
+			cs.confirm(i)
 		}
 		return
 	}
-	if i := indexForDigit(k.Rune); i >= 0 {
+	if i := defaultIndexFor(k.Sym); i >= 0 && i < len(cs.cur.choices) {
 		cs.confirm(i)
 	}
 }
 
 func (cs *chooserState) confirm(i int) {
-	if i < 0 || i >= len(cs.c.Choices) {
+	if i < 0 || i >= len(cs.cur.choices) {
+		return
+	}
+	choice := cs.cur.choices[i]
+	if choice.Children != nil {
+		cs.stack = append(cs.stack, cs.cur)
+		cs.cur = chooserLayer{choices: choice.Children}
+		cs.render()
 		return
 	}
 	cs.done = true
-	choice := cs.c.Choices[i]
+	value := choice.Value
+	if value == "" {
+		value = choice.Text
+	}
 	cs.o.ClearChooser()
 	if cs.c.OnChoice != nil {
-		cs.c.OnChoice(i, choice)
+		cs.c.OnChoice(i, value)
 	}
 }
 
-func (cs *chooserState) cancel() {
+func (cs *chooserState) back() {
+	if n := len(cs.stack); n > 0 {
+		cs.cur = cs.stack[n-1]
+		cs.stack = cs.stack[:n-1]
+		cs.render()
+		return
+	}
 	cs.done = true
 	cs.o.ClearChooser()
 	if cs.c.OnCancel != nil {
@@ -146,19 +218,40 @@ func (cs *chooserState) cancel() {
 	}
 }
 
-func digitFor(i int) rune {
-	if i == 9 {
-		return '0'
+func buildKeyIndex(keys []uint32) map[uint32]int {
+	idx := make(map[uint32]int, len(keys))
+	for i, k := range keys {
+		idx[k] = i
 	}
-	return rune('1' + i)
+	return idx
 }
 
-func indexForDigit(r rune) int {
+func defaultKeyAt(i int) uint32 {
 	switch {
-	case r == '0':
+	case i == 9:
+		return '0'
+	case i >= 0 && i < 9:
+		return uint32('1' + i)
+	}
+	return 0
+}
+
+func defaultIndexFor(sym uint32) int {
+	switch {
+	case sym == '0':
 		return 9
-	case r >= '1' && r <= '9':
-		return int(r - '1')
+	case sym >= '1' && sym <= '9':
+		return int(sym - '1')
 	}
 	return -1
+}
+
+func keyTag(sym uint32) string {
+	switch {
+	case sym >= '0' && sym <= '9':
+		return string(rune(sym))
+	case sym >= 0xffbe && sym <= 0xffe0:
+		return "F" + strconv.Itoa(int(sym-0xffbe+1))
+	}
+	return ""
 }

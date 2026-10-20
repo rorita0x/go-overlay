@@ -21,10 +21,17 @@ type Key struct {
 
 const (
 	KeyLeft   = 0xff51
+	KeyUp     = 0xff52
 	KeyRight  = 0xff53
+	KeyDown   = 0xff54
 	KeyReturn = 0xff0d
 	KeyEscape = 0xff1b
 )
+
+// FKey returns the keysym for function key n (1-35), e.g. FKey(1) == F1.
+func FKey(n int) uint32 {
+	return 0xffbe + uint32(n-1)
+}
 
 type seat struct {
 	o        *Overlay
