@@ -13,6 +13,8 @@ void ov_output_add_listener(struct wl_output *o, uintptr_t h);
 void ov_surface_add_listener(struct wl_surface *s, uintptr_t h);
 void ov_layer_surface_add_listener(struct zwlr_layer_surface_v1 *l, uintptr_t h);
 void ov_buffer_add_listener(struct wl_buffer *b, uintptr_t h);
+void ov_seat_add_listener(struct wl_seat *s, uintptr_t h);
+void ov_keyboard_add_listener(struct wl_keyboard *k, uintptr_t h);
 
 // ov_shm_alloc creates a memfd of size bytes and maps it. Returns the fd, or
 // -1 with errno set.

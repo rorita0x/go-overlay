@@ -99,6 +99,48 @@ void ov_buffer_add_listener(struct wl_buffer *b, uintptr_t h) {
 	wl_buffer_add_listener(b, &buffer_listener, (void *)h);
 }
 
+static void seat_capabilities(void *data, struct wl_seat *s, uint32_t capabilities) {
+	ovSeatCapabilities((uintptr_t)data, capabilities);
+}
+static void seat_name(void *data, struct wl_seat *s, const char *name) {}
+
+static const struct wl_seat_listener seat_listener = {
+	.capabilities = seat_capabilities,
+	.name = seat_name,
+};
+
+void ov_seat_add_listener(struct wl_seat *s, uintptr_t h) {
+	wl_seat_add_listener(s, &seat_listener, (void *)h);
+}
+
+static void keyboard_keymap(void *data, struct wl_keyboard *k, uint32_t format,
+                            int32_t fd, uint32_t size) {
+	ovKeyboardKeymap((uintptr_t)data, format, fd, size);
+}
+static void keyboard_enter(void *data, struct wl_keyboard *k, uint32_t serial,
+                           struct wl_surface *surface, struct wl_array *keys) {}
+static void keyboard_leave(void *data, struct wl_keyboard *k, uint32_t serial,
+                           struct wl_surface *surface) {}
+static void keyboard_key(void *data, struct wl_keyboard *k, uint32_t serial,
+                         uint32_t time, uint32_t key, uint32_t state) {
+	ovKeyboardKey((uintptr_t)data, key, state);
+}
+static void keyboard_modifiers(void *data, struct wl_keyboard *k, uint32_t serial,
+                               uint32_t mods_depressed, uint32_t mods_latched,
+                               uint32_t mods_locked, uint32_t group) {
+	ovKeyboardModifiers((uintptr_t)data, mods_depressed, mods_latched, mods_locked, group);
+}
+static void keyboard_repeat_info(void *data, struct wl_keyboard *k, int32_t rate, int32_t delay) {}
+
+static const struct wl_keyboard_listener keyboard_listener = {
+	.keymap = keyboard_keymap, .enter = keyboard_enter, .leave = keyboard_leave,
+	.key = keyboard_key, .modifiers = keyboard_modifiers, .repeat_info = keyboard_repeat_info,
+};
+
+void ov_keyboard_add_listener(struct wl_keyboard *k, uintptr_t h) {
+	wl_keyboard_add_listener(k, &keyboard_listener, (void *)h);
+}
+
 int ov_shm_alloc(size_t size, void **data) {
 	int fd = memfd_create("go-overlay", MFD_CLOEXEC);
 	if (fd < 0) return -1;

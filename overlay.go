@@ -67,6 +67,13 @@ type Overlay struct {
 	gens     [4]uint64   // bumped on every Set/Clear
 
 	maxScale atomic.Int32
+
+	seat  *seat
+	onKey func(Key)
+
+	popup    *popup
+	popupReq *popupRequest // guarded by mu, like contents/gens
+	popupGen uint64
 }
 
 // New connects to the compositor named by $WAYLAND_DISPLAY and binds the
@@ -191,6 +198,12 @@ func (o *Overlay) Clear(c Corner) {
 	o.store(c, nil)
 }
 
+// OnKey registers fn for key presses on the popup shown by SetPopup. fn runs
+// synchronously on Run's thread and must not block. Call before Run.
+func (o *Overlay) OnKey(fn func(Key)) {
+	o.onKey = fn
+}
+
 // Run shows the labels and processes compositor events until ctx is done
 // (returning nil) or the connection fails. Only one Run may be active at a
 // time; all labels are removed from the screen when it returns.
@@ -281,6 +294,12 @@ func (o *Overlay) global(name uint32, iface string, version uint32) {
 		out.handle = cgo.NewHandle(out)
 		C.ov_output_add_listener(out.wl, C.uintptr_t(out.handle))
 		o.outputs[name] = out
+	case "wl_seat":
+		st := &seat{o: o}
+		st.wl = (*C.struct_wl_seat)(o.bind(name, &C.wl_seat_interface, min(version, 5)))
+		st.handle = cgo.NewHandle(st)
+		C.ov_seat_add_listener(st.wl, C.uintptr_t(st.handle))
+		o.seat = st
 	}
 }
 
@@ -330,12 +349,17 @@ func (o *Overlay) sync() {
 		}
 	}
 	o.maxScale.Store(int32(maxScale))
+	o.syncPopup()
 }
 
 // removeAll destroys every surface and waits until the compositor has seen it.
 func (o *Overlay) removeAll() {
 	for _, out := range o.outputs {
 		out.destroySurfaces()
+	}
+	if o.popup != nil {
+		o.popup.destroy()
+		o.popup = nil
 	}
 	C.wl_display_roundtrip(o.display)
 }

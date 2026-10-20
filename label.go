@@ -115,3 +115,9 @@ func MustHex(s string) color.NRGBA {
 	}
 	return c
 }
+
+// MeasureLabel returns l's rendered size in logical pixels, for Popup sizing.
+func MeasureLabel(l Label) (w, h int) {
+	cl := l.clone()
+	return measure(&cl)
+}
