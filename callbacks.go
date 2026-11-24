@@ -20,7 +20,7 @@ type layerSurface interface {
 	closed()
 }
 
-// releaser receives wl_buffer.release. Satisfied by *buffer and *popupBuffer.
+// releaser receives wl_buffer.release. Satisfied by *buffer and *shmBuffer.
 type releaser interface{ release() }
 
 //export ovRegistryGlobal

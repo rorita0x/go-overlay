@@ -5,12 +5,7 @@ package overlay
 */
 import "C"
 
-import (
-	"fmt"
-	"runtime/cgo"
-	"syscall"
-	"unsafe"
-)
+import "runtime/cgo"
 
 // Popup is a single, centered, keyboard-focused overlay surface.
 type Popup struct {
@@ -73,7 +68,7 @@ type popup struct {
 	configured     bool
 	resizing       bool
 	dirty          bool
-	buffers        []*popupBuffer
+	buffers        []*shmBuffer
 }
 
 func newPopup(o *Overlay, req *popupRequest, gen uint64) *popup {
@@ -134,7 +129,7 @@ func (p *popup) draw() {
 	}
 	sc := p.scale()
 	w, h := p.w*sc, p.h*sc
-	b := p.freeBuffer(w, h)
+	b := freeShmBuffer(p.o, p, &p.buffers, w, h)
 	if b == nil {
 		return
 	}
@@ -147,33 +142,11 @@ func (p *popup) draw() {
 	p.dirty = false
 }
 
-func (p *popup) freeBuffer(w, h int) *popupBuffer {
-	keep := p.buffers[:0]
-	var found *popupBuffer
-	for _, b := range p.buffers {
-		switch {
-		case b.busy:
-			keep = append(keep, b)
-		case b.w != w || b.h != h:
-			b.destroy()
-		default:
-			if found == nil {
-				found = b
-			}
-			keep = append(keep, b)
-		}
+// bufferReleased redraws a frame that waited for a free buffer.
+func (p *popup) bufferReleased() {
+	if p.dirty {
+		p.draw()
 	}
-	p.buffers = keep
-	if found != nil || len(p.buffers) >= 2 {
-		return found
-	}
-	b, err := newPopupBuffer(p, w, h)
-	if err != nil {
-		p.o.fail(err)
-		return nil
-	}
-	p.buffers = append(p.buffers, b)
-	return b
 }
 
 func (p *popup) destroy() {
@@ -184,49 +157,4 @@ func (p *popup) destroy() {
 	C.zwlr_layer_surface_v1_destroy(p.layer)
 	C.wl_surface_destroy(p.wl)
 	p.handle.Delete()
-}
-
-type popupBuffer struct {
-	p         *popup
-	wl        *C.struct_wl_buffer
-	handle    cgo.Handle
-	data      unsafe.Pointer
-	size      int
-	w, h      int
-	stride    int
-	busy      bool
-	destroyed bool
-}
-
-func newPopupBuffer(p *popup, w, h int) (*popupBuffer, error) {
-	b := &popupBuffer{p: p, w: w, h: h, stride: w * 4}
-	b.size = b.stride * h
-	fd, err := C.ov_shm_alloc(C.size_t(b.size), &b.data)
-	if fd < 0 {
-		return nil, fmt.Errorf("overlay: allocate %dx%d popup shm buffer: %w", w, h, err)
-	}
-	pool := C.wl_shm_create_pool(p.o.shm, fd, C.int32_t(b.size))
-	b.wl = C.wl_shm_pool_create_buffer(pool, 0, C.int32_t(w), C.int32_t(h), C.int32_t(b.stride), C.WL_SHM_FORMAT_ARGB8888)
-	C.wl_shm_pool_destroy(pool)
-	syscall.Close(int(fd))
-	b.handle = cgo.NewHandle(b)
-	C.ov_buffer_add_listener(b.wl, C.uintptr_t(b.handle))
-	return b, nil
-}
-
-func (b *popupBuffer) release() {
-	b.busy = false
-	if b.p.dirty {
-		b.p.draw()
-	}
-}
-
-func (b *popupBuffer) destroy() {
-	if b.destroyed {
-		return
-	}
-	b.destroyed = true
-	C.wl_buffer_destroy(b.wl)
-	C.ov_shm_free(b.data, C.size_t(b.size))
-	b.handle.Delete()
 }

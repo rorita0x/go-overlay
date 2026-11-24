@@ -80,6 +80,12 @@ type Overlay struct {
 	popup    *popup
 	popupReq *popupRequest // guarded by mu, like contents/gens
 	popupGen uint64
+
+	radial      *radialRun // the open radial menu; Run's thread only
+	radialReq   *Radial    // guarded by mu, like contents/gens
+	radialGen   uint64
+	radialShown atomic.Bool // a menu is requested and not yet closed
+	radialTick  atomic.Bool // the Refresh ticker asks for a redraw
 }
 
 // New connects to the compositor named by $WAYLAND_DISPLAY and binds the
@@ -358,6 +364,7 @@ func (o *Overlay) sync() {
 	}
 	o.maxScale.Store(int32(maxScale))
 	o.syncPopup()
+	o.syncRadial()
 }
 
 // removeAll destroys every surface and waits until the compositor has seen it.
@@ -369,6 +376,7 @@ func (o *Overlay) removeAll() {
 		o.popup.destroy()
 		o.popup = nil
 	}
+	o.destroyRadial()
 	C.wl_display_roundtrip(o.display)
 }
 

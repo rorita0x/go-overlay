@@ -1,7 +1,8 @@
 # go-overlay
 
 Go library that draws text labels in the four screen corners on Wayland,
-click-through unless they take clicks, like a tiny LayerShellQt for Go. It uses the `wlr-layer-shell`
+click-through unless they take clicks, and a radial menu at the mouse
+pointer, like a tiny LayerShellQt for Go. It uses the `wlr-layer-shell`
 protocol (KWin, Sway, Hyprland, niri, …) and renders with Pango/Cairo, so you
 get system fonts, shaping, emoji, multi-colored spans and a rounded background box.
 
@@ -71,7 +72,46 @@ label never takes the keyboard focus from the window that has it.
 ov.Set(overlay.TopRight, overlay.Label{
 	Spans:   []overlay.Span{{Text: "◎ menu"}},
 	Style:   overlay.DefaultTextStyle,
-	OnClick: func(c overlay.Click) { fmt.Println("clicked with", c.Button) },
+	OnClick: func(c overlay.Click) { ov.SetRadial(menu) },
+})
+```
+
+## Radial menu
+
+`SetRadial` opens a radial (pie) menu centred where the mouse pointer is
+(moved inwards if it would not fit on the screen). Its items fill the ring
+clockwise from the top; an item with an empty `Label` leaves its slot blank,
+so the others keep their directions, and a `Disabled` one is drawn dimmed.
+
+- Hovering a slot shows its `Preview` (or its label) in the middle. While
+  nothing is hovered the middle shows the menu's `Center`, and clicking it
+  picks `Center` (`RadialPick.Center`). `Refresh` redraws the open menu
+  periodically, e.g. for a countdown in a preview.
+- An item with `Children` opens a submenu: a new ring centred where the item
+  was clicked, so the pointer starts in its middle. A click on a submenu's
+  middle goes back to the ring before, at its old place.
+- A click on an item (any mouse button) closes the menu and calls `OnPick`
+  with the item's path, its `Value` (or label) and the button. A click
+  outside the ring closes it and calls `OnCancel`. `ClearRadial` closes it
+  without a callback; `RadialOpen` tells whether it is open.
+
+While open, the menu takes the pointer on the whole screen (one transparent
+surface per output) but never the keyboard focus, so the window that had it
+keeps it: an app can type into it after a pick. For the same reason there is
+no Escape; a click beside the ring closes the menu.
+
+```go
+ov.SetRadial(overlay.Radial{
+	Items: []overlay.RadialItem{
+		{Label: "Copy", Value: "copy"},
+		{Label: "Colors", Detail: "3 entries ›", Children: []overlay.RadialItem{
+			{Label: "Red"}, {Label: "Green"}, {Label: "Blue"},
+		}},
+		{Label: "Paste", Disabled: true},
+	},
+	Center:   overlay.RadialItem{Label: "Close", Value: "close"},
+	OnPick:   func(p overlay.RadialPick) { fmt.Println(p.Value, p.Path, p.Button) },
+	OnCancel: func() { fmt.Println("cancelled") },
 })
 ```
 
@@ -90,13 +130,15 @@ go run ./cmd/overlay-demo -outputs DP-1   # one output
 go run ./cmd/overlay-demo -over-panels
 go run ./cmd/overlay-demo -image          # animated gradient top left
 ls --color=always | go run ./cmd/overlay-demo -stdin   # last 10 lines, bottom left
+go run ./cmd/radial-demo                  # a radial menu; reopen via the corner label or `pkill -USR1 radial-demo`
 ```
 
 ## Limitations
 
-The pointer image over clickable labels is set through `cursor-shape-v1`
-(KWin 6, Sway, Hyprland, niri, …). A compositor without it may hide the
-pointer over them.
+The pointer image over clickable labels and the radial menu is set through
+`cursor-shape-v1` (KWin 6, Sway, Hyprland, niri, …). A compositor without
+it may hide the pointer over them, i.e. on the whole screen while a radial
+menu is open.
 
 Integer buffer scale only (`preferred_buffer_scale` / `wl_output.scale`); with
 fractional scaling the compositor scales the buffer.
