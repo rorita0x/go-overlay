@@ -116,7 +116,7 @@ func (p *popup) setPreferredScale(f int) {
 	}
 }
 
-func (p *popup) configure(serial uint32) {
+func (p *popup) configure(serial, _, _ uint32) {
 	C.zwlr_layer_surface_v1_ack_configure(p.layer, C.uint32_t(serial))
 	p.configured, p.resizing = true, false
 	p.draw()

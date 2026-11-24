@@ -39,6 +39,9 @@ type seat struct {
 	handle   cgo.Handle
 	keyboard *C.struct_wl_keyboard
 	kbHandle cgo.Handle
+	pointer  *C.struct_wl_pointer
+	ptHandle cgo.Handle
+	shape    *C.struct_wp_cursor_shape_device_v1 // made on first use
 
 	xkbCtx    *C.struct_xkb_context
 	xkbKeymap *C.struct_xkb_keymap
@@ -57,6 +60,37 @@ func (s *seat) capabilities(caps uint32) {
 		s.kbHandle.Delete()
 		s.keyboard = nil
 	}
+
+	has = caps&C.WL_SEAT_CAPABILITY_POINTER != 0
+	switch {
+	case has && s.pointer == nil:
+		s.pointer = C.wl_seat_get_pointer(s.wl)
+		s.ptHandle = cgo.NewHandle(s)
+		C.ov_pointer_add_listener(s.pointer, C.uintptr_t(s.ptHandle))
+	case !has && s.pointer != nil:
+		if s.shape != nil {
+			C.wp_cursor_shape_device_v1_destroy(s.shape)
+			s.shape = nil
+		}
+		C.wl_pointer_release(s.pointer)
+		s.ptHandle.Delete()
+		s.pointer = nil
+		s.o.pointerLeave(0)
+	}
+}
+
+// setCursor shows the compositor's own pointer image of the given
+// cursor-shape-v1 shape; serial is that of the pointer's enter event. Without
+// it the compositor may hide the pointer over our surfaces. A no-op if the
+// compositor lacks cursor-shape-v1 or shape is 0.
+func (s *seat) setCursor(serial, shape uint32) {
+	if shape == 0 || s.pointer == nil || s.o.cursorShape == nil {
+		return
+	}
+	if s.shape == nil {
+		s.shape = C.wp_cursor_shape_manager_v1_get_pointer(s.o.cursorShape, s.pointer)
+	}
+	C.wp_cursor_shape_device_v1_set_shape(s.shape, C.uint32_t(serial), C.uint32_t(shape))
 }
 
 func (s *seat) setKeymap(data []byte) {

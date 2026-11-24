@@ -51,6 +51,11 @@ func imageContent(img Image) *content {
 	return ct
 }
 
+// clickable reports whether the content takes mouse clicks (Label.OnClick).
+func (ct *content) clickable() bool {
+	return ct.label != nil && ct.label.OnClick != nil
+}
+
 func (ct *content) logicalSize() (w, h int) {
 	if ct.label != nil {
 		return measure(ct.label)

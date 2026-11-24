@@ -13,9 +13,10 @@ import "runtime/cgo"
 type scaler interface{ setPreferredScale(int) }
 
 // layerSurface receives zwlr_layer_surface_v1 configure/closed. Satisfied by
-// *surface and *popup.
+// *surface and *popup. w and h are the size the compositor picked, 0 where
+// it leaves it to the client.
 type layerSurface interface {
-	configure(serial uint32)
+	configure(serial, w, h uint32)
 	closed()
 }
 
@@ -59,7 +60,7 @@ func ovSurfacePreferredScale(h C.uintptr_t, factor C.int32_t) {
 
 //export ovLayerConfigure
 func ovLayerConfigure(h C.uintptr_t, serial, w, hgt C.uint32_t) {
-	cgo.Handle(h).Value().(layerSurface).configure(uint32(serial))
+	cgo.Handle(h).Value().(layerSurface).configure(uint32(serial), uint32(w), uint32(hgt))
 }
 
 //export ovLayerClosed

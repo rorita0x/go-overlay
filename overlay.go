@@ -56,9 +56,12 @@ type Overlay struct {
 	compositor *C.struct_wl_compositor
 	shm        *C.struct_wl_shm
 	layerShell *C.struct_zwlr_layer_shell_v1
-	handle     cgo.Handle
-	outputs    map[uint32]*output
-	loopErr    error // first error inside an event handler; ends Run
+	// cursorShape sets the pointer image over our surfaces; nil if the
+	// compositor lacks cursor-shape-v1.
+	cursorShape *C.struct_wp_cursor_shape_manager_v1
+	handle      cgo.Handle
+	outputs     map[uint32]*output
+	loopErr     error // first error inside an event handler; ends Run
 
 	wakeR, wakeW int
 
@@ -70,6 +73,9 @@ type Overlay struct {
 
 	seat  *seat
 	onKey func(Key)
+
+	pointerTargets map[uintptr]pointerTarget // by wl_surface; see pointer.go
+	pointerFocus   pointerTarget
 
 	popup    *popup
 	popupReq *popupRequest // guarded by mu, like contents/gens
@@ -294,6 +300,8 @@ func (o *Overlay) global(name uint32, iface string, version uint32) {
 		out.handle = cgo.NewHandle(out)
 		C.ov_output_add_listener(out.wl, C.uintptr_t(out.handle))
 		o.outputs[name] = out
+	case "wp_cursor_shape_manager_v1":
+		o.cursorShape = (*C.struct_wp_cursor_shape_manager_v1)(o.bind(name, &C.wp_cursor_shape_manager_v1_interface, 1))
 	case "wl_seat":
 		st := &seat{o: o}
 		st.wl = (*C.struct_wl_seat)(o.bind(name, &C.wl_seat_interface, min(version, 5)))

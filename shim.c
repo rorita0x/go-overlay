@@ -141,6 +141,43 @@ void ov_keyboard_add_listener(struct wl_keyboard *k, uintptr_t h) {
 	wl_keyboard_add_listener(k, &keyboard_listener, (void *)h);
 }
 
+// The seat is bound at version 5, so every wl_pointer event up to v5 needs a
+// handler, even those that are ignored.
+static void pointer_enter(void *data, struct wl_pointer *p, uint32_t serial,
+                          struct wl_surface *surface, wl_fixed_t x, wl_fixed_t y) {
+	ovPointerEnter((uintptr_t)data, serial, (uintptr_t)surface, wl_fixed_to_double(x), wl_fixed_to_double(y));
+}
+static void pointer_leave(void *data, struct wl_pointer *p, uint32_t serial,
+                          struct wl_surface *surface) {
+	ovPointerLeave((uintptr_t)data, (uintptr_t)surface);
+}
+static void pointer_motion(void *data, struct wl_pointer *p, uint32_t time, wl_fixed_t x,
+                           wl_fixed_t y) {
+	ovPointerMotion((uintptr_t)data, wl_fixed_to_double(x), wl_fixed_to_double(y));
+}
+static void pointer_button(void *data, struct wl_pointer *p, uint32_t serial, uint32_t time,
+                           uint32_t button, uint32_t state) {
+	ovPointerButton((uintptr_t)data, button, state);
+}
+static void pointer_axis(void *data, struct wl_pointer *p, uint32_t time, uint32_t axis,
+                         wl_fixed_t value) {}
+static void pointer_frame(void *data, struct wl_pointer *p) {}
+static void pointer_axis_source(void *data, struct wl_pointer *p, uint32_t source) {}
+static void pointer_axis_stop(void *data, struct wl_pointer *p, uint32_t time, uint32_t axis) {}
+static void pointer_axis_discrete(void *data, struct wl_pointer *p, uint32_t axis,
+                                  int32_t discrete) {}
+
+static const struct wl_pointer_listener pointer_listener = {
+	.enter = pointer_enter, .leave = pointer_leave, .motion = pointer_motion,
+	.button = pointer_button, .axis = pointer_axis, .frame = pointer_frame,
+	.axis_source = pointer_axis_source, .axis_stop = pointer_axis_stop,
+	.axis_discrete = pointer_axis_discrete,
+};
+
+void ov_pointer_add_listener(struct wl_pointer *p, uintptr_t h) {
+	wl_pointer_add_listener(p, &pointer_listener, (void *)h);
+}
+
 int ov_shm_alloc(size_t size, void **data) {
 	int fd = memfd_create("go-overlay", MFD_CLOEXEC);
 	if (fd < 0) return -1;

@@ -57,6 +57,11 @@ type Style struct {
 type Label struct {
 	Spans []Span
 	Style Style
+	// OnClick makes the label take mouse clicks: it is called when a button
+	// is released over the label it was pressed on. It runs on Run's thread
+	// and must not block. A label without it is click-through. Clicking a
+	// label never takes the keyboard focus from the window that has it.
+	OnClick func(Click)
 }
 
 var white = color.NRGBA{255, 255, 255, 255}

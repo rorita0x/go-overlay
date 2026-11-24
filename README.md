@@ -1,7 +1,7 @@
 # go-overlay
 
-Go library that draws click-through text labels in the four screen corners on
-Wayland, like a tiny LayerShellQt for Go. It uses the `wlr-layer-shell`
+Go library that draws text labels in the four screen corners on Wayland,
+click-through unless they take clicks, like a tiny LayerShellQt for Go. It uses the `wlr-layer-shell`
 protocol (KWin, Sway, Hyprland, niri, …) and renders with Pango/Cairo, so you
 get system fonts, shaping, emoji, multi-colored spans and a rounded background box.
 
@@ -60,9 +60,24 @@ draw(img) // premultiplied RGBA
 ov.SetImage(overlay.TopRight, overlay.Image{RGBA: img, Scale: sc, Margin: 12})
 ```
 
+## Clickable labels
+
+A label with `OnClick` takes mouse clicks; every other label stays
+click-through. `OnClick` is called when a button is released over the label
+it was pressed on, with the button and the position in the label. Clicking a
+label never takes the keyboard focus from the window that has it.
+
+```go
+ov.Set(overlay.TopRight, overlay.Label{
+	Spans:   []overlay.Span{{Text: "◎ menu"}},
+	Style:   overlay.DefaultTextStyle,
+	OnClick: func(c overlay.Click) { fmt.Println("clicked with", c.Button) },
+})
+```
+
 ## Build requirements
 
-cgo, plus development files for `wayland-client` and `pangocairo`.
+cgo, plus development files for `wayland-client`, `pangocairo` and `xkbcommon`.
 The protocol glue in `*-protocol.c/h` is generated and committed; `go generate`
 regenerates it from `protocols/` (needs `wayland-scanner`).
 
@@ -78,6 +93,10 @@ ls --color=always | go run ./cmd/overlay-demo -stdin   # last 10 lines, bottom l
 ```
 
 ## Limitations
+
+The pointer image over clickable labels is set through `cursor-shape-v1`
+(KWin 6, Sway, Hyprland, niri, …). A compositor without it may hide the
+pointer over them.
 
 Integer buffer scale only (`preferred_buffer_scale` / `wl_output.scale`); with
 fractional scaling the compositor scales the buffer.

@@ -29,6 +29,9 @@ type surface struct {
 	resizing       bool // set_size sent, waiting for its configure
 	dirty          bool // needs a redraw once a buffer is free
 	buffers        []*buffer
+
+	px, py  float64 // pointer position while over a clickable label
+	pressed Button  // button pressed over it, 0 if none
 }
 
 func newSurface(out *output, c Corner, ct *content, gen uint64) *surface {
@@ -38,10 +41,8 @@ func newSurface(out *output, c Corner, ct *content, gen uint64) *surface {
 	s.wl = C.wl_compositor_create_surface(o.compositor)
 	C.ov_surface_add_listener(s.wl, C.uintptr_t(s.handle))
 
-	// An empty input region lets pointer events fall through to what's below.
-	region := C.wl_compositor_create_region(o.compositor)
-	C.wl_surface_set_input_region(s.wl, region)
-	C.wl_region_destroy(region)
+	s.setInputRegion(ct)
+	o.addPointerTarget(s.wl, s)
 
 	s.layer = C.zwlr_layer_shell_v1_get_layer_surface(o.layerShell, s.wl, out.wl,
 		C.ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, o.namespace)
@@ -71,6 +72,9 @@ func newSurface(out *output, c Corner, ct *content, gen uint64) *surface {
 func (s *surface) setContent(ct *content, gen uint64) {
 	old := s.content
 	s.content, s.gen = ct, gen
+	if ct.clickable() != old.clickable() {
+		s.setInputRegion(ct) // applied with the next commit
+	}
 	if ct.margin != old.margin {
 		m := C.int32_t(ct.margin)
 		C.zwlr_layer_surface_v1_set_margin(s.layer, m, m, m, m)
@@ -84,6 +88,40 @@ func (s *surface) setContent(ct *content, gen uint64) {
 		return
 	}
 	s.draw()
+}
+
+// setInputRegion makes the surface click-through (an empty input region
+// lets pointer events fall through to what's below) unless ct is
+// clickable, which takes the default: the whole surface.
+func (s *surface) setInputRegion(ct *content) {
+	if ct.clickable() {
+		C.wl_surface_set_input_region(s.wl, nil)
+		return
+	}
+	region := C.wl_compositor_create_region(s.out.o.compositor)
+	C.wl_surface_set_input_region(s.wl, region)
+	C.wl_region_destroy(region)
+}
+
+// cursor is a hand over a clickable label.
+func (s *surface) cursor() uint32 { return cursorPointer }
+
+func (s *surface) pointerEnter(x, y float64)  { s.px, s.py = x, y }
+func (s *surface) pointerMotion(x, y float64) { s.px, s.py = x, y }
+func (s *surface) pointerLeave()              { s.pressed = 0 }
+
+func (s *surface) pointerButton(b Button, pressed bool) {
+	if pressed {
+		s.pressed = b
+		return
+	}
+	if s.pressed != b {
+		return
+	}
+	s.pressed = 0
+	if l := s.content.label; l != nil && l.OnClick != nil {
+		l.OnClick(Click{Button: b, X: s.px, Y: s.py})
+	}
 }
 
 func (s *surface) scale() int {
@@ -103,7 +141,7 @@ func (s *surface) setPreferredScale(f int) {
 	}
 }
 
-func (s *surface) configure(serial uint32) {
+func (s *surface) configure(serial, _, _ uint32) {
 	C.zwlr_layer_surface_v1_ack_configure(s.layer, C.uint32_t(serial))
 	s.configured, s.resizing = true, false
 	s.draw()
@@ -183,6 +221,7 @@ func (s *surface) destroy() {
 		b.destroy()
 	}
 	s.buffers = nil
+	s.out.o.removePointerTarget(s.wl)
 	C.zwlr_layer_surface_v1_destroy(s.layer)
 	C.wl_surface_destroy(s.wl)
 	s.handle.Delete()

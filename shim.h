@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <wayland-client.h>
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#include "cursor-shape-v1-client-protocol.h"
 
 // Listeners forward events to exported Go functions. The user data of every
 // object is a runtime/cgo.Handle to its Go counterpart.
@@ -15,6 +16,7 @@ void ov_layer_surface_add_listener(struct zwlr_layer_surface_v1 *l, uintptr_t h)
 void ov_buffer_add_listener(struct wl_buffer *b, uintptr_t h);
 void ov_seat_add_listener(struct wl_seat *s, uintptr_t h);
 void ov_keyboard_add_listener(struct wl_keyboard *k, uintptr_t h);
+void ov_pointer_add_listener(struct wl_pointer *p, uintptr_t h);
 
 // ov_shm_alloc creates a memfd of size bytes and maps it. Returns the fd, or
 // -1 with errno set.
